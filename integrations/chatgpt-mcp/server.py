@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import posixpath
 import secrets
+import shlex
 from pathlib import PurePosixPath
 
 import asyncssh
@@ -191,7 +192,7 @@ async def git_status() -> dict:
     )
     try:
         result = await conn.run(
-            "git -C " + __import__("shlex").quote(posixpath.normpath(ROOT)) +
+            "git -C " + shlex.quote(posixpath.normpath(ROOT)) +
             " status --short --branch",
             check=False, timeout=15,
         )
