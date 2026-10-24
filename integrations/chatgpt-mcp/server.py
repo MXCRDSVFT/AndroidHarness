@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import posixpath
+import secrets
 from pathlib import PurePosixPath
 
 import asyncssh
@@ -132,6 +133,96 @@ async def workspace_read_file(path: str) -> dict:
         return {"ok": True, "path": rel, "content": text}
     except (OSError, asyncssh.SFTPError) as exc:
         return {"ok": False, "error": str(exc)[:2000]}
+    finally:
+        conn.close()
+        await conn.wait_closed()
+
+
+@mcp.tool()
+async def workspace_write_file(path: str, content: str) -> dict:
+    """Write UTF-8 text inside the configured workspace; rejects symlinks and limits writes."""
+    rel = relative(path)
+    data = content.encode("utf-8")
+    if len(data) > MAX_BYTES:
+        return {"ok": False, "error": "Content exceeds configured write limit."}
+    if rel == ".":
+        return {"ok": False, "error": "A file path is required."}
+    conn, sftp = await open_sftp()
+    try:
+        parent_rel = posixpath.dirname(rel) or "."
+        parent = await safe_target(sftp, parent_rel)
+        parent_attrs = await sftp.lstat(parent)
+        if parent_attrs.type != asyncssh.FILEXFER_TYPE_DIRECTORY:
+            return {"ok": False, "error": "Parent path is not a directory."}
+        target = posixpath.join(parent, posixpath.basename(rel))
+        try:
+            attrs = await sftp.lstat(target)
+            if attrs.type == asyncssh.FILEXFER_TYPE_SYMLINK:
+                return {"ok": False, "error": "Symlink targets are not allowed."}
+            if attrs.type != asyncssh.FILEXFER_TYPE_REGULAR:
+                return {"ok": False, "error": "Only regular files can be overwritten."}
+        except asyncssh.SFTPNoSuchFile:
+            pass
+        temporary = posixpath.join(parent, ".cin-write-" + secrets.token_hex(12))
+        try:
+            async with sftp.open(temporary, "xb") as handle:
+                await handle.write(data)
+            await sftp.rename(temporary, target)
+        finally:
+            try:
+                await sftp.remove(temporary)
+            except asyncssh.SFTPError:
+                pass
+        return {"ok": True, "path": rel, "bytes_written": len(data)}
+    except (OSError, asyncssh.SFTPError) as exc:
+        return {"ok": False, "error": str(exc)[:2000]}
+    finally:
+        conn.close()
+        await conn.wait_closed()
+
+
+@mcp.tool()
+async def git_status() -> dict:
+    """Return read-only git status for the configured workspace."""
+    configured()
+    conn = await asyncssh.connect(
+        HOST, username=USER, client_keys=[KEY], known_hosts=KNOWN_HOSTS,
+        agent_path=None, password=None, connect_timeout=10,
+    )
+    try:
+        result = await conn.run(
+            "git -C " + __import__("shlex").quote(posixpath.normpath(ROOT)) +
+            " status --short --branch",
+            check=False, timeout=15,
+        )
+        output = (result.stdout or "")[:MAX_BYTES]
+        error = (result.stderr or "")[:2000]
+        return {"ok": result.exit_status == 0, "exit_code": result.exit_status,
+                "stdout": output, "stderr": error}
+    finally:
+        conn.close()
+        await conn.wait_closed()
+
+
+@mcp.tool()
+async def git_diff() -> dict:
+    """Return a bounded read-only git diff for the configured workspace."""
+    configured()
+    conn = await asyncssh.connect(
+        HOST, username=USER, client_keys=[KEY], known_hosts=KNOWN_HOSTS,
+        agent_path=None, password=None, connect_timeout=10,
+    )
+    try:
+        result = await conn.run(
+            "git -C " + __import__("shlex").quote(posixpath.normpath(ROOT)) +
+            " diff --no-ext-diff --",
+            check=False, timeout=20,
+        )
+        output = (result.stdout or "")[:MAX_BYTES]
+        error = (result.stderr or "")[:2000]
+        return {"ok": result.exit_status == 0, "exit_code": result.exit_status,
+                "stdout": output, "stderr": error,
+                "truncated": len(result.stdout or "") > MAX_BYTES}
     finally:
         conn.close()
         await conn.wait_closed()
