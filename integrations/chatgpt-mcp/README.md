@@ -18,8 +18,7 @@ Requires Python 3.11+.
 1. Create a virtual environment and install requirements: `python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt`.
 2. Set ANDROIDHARNESS_SSH_HOST, ANDROIDHARNESS_SSH_USER, ANDROIDHARNESS_SSH_KEY, ANDROIDHARNESS_KNOWN_HOSTS and ANDROIDHARNESS_WORKSPACE (absolute remote root). Optional: ANDROIDHARNESS_MAX_READ_BYTES (default 200000).
 3. Run `python server.py`. Local endpoint: `http://127.0.0.1:8000/mcp`.
-4. Run `python -m unittest -v test_server.py`.
-5. Deploy behind TLS/authentication or a supported secure tunnel, then connect that HTTPS MCP endpoint from ChatGPT on the web.
+4. Deploy behind TLS/authentication or a supported secure tunnel, then connect that HTTPS MCP endpoint from ChatGPT on the web.
 
 ## Tools
 
