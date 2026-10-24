@@ -54,20 +54,24 @@ async def safe_target(sftp, rel: str) -> str:
     """Reject symlinks in the configured root and every path component."""
     root = posixpath.normpath(ROOT)
     current = "/"
-    for component in [part for part in root.split("/") if part]:
+    root_components = [part for part in root.split("/") if part]
+    for index, component in enumerate(root_components):
         current = posixpath.join(current, component)
         attrs = await sftp.lstat(current)
         if attrs.type == asyncssh.FILEXFER_TYPE_SYMLINK:
             raise ValueError("Symlink component in configured workspace root.")
-        if current != root and attrs.type != asyncssh.FILEXFER_TYPE_DIRECTORY:
+        if index < len(root_components) - 1 and attrs.type != asyncssh.FILEXFER_TYPE_DIRECTORY:
             raise ValueError("Workspace root contains a non-directory component.")
+    if attrs.type != asyncssh.FILEXFER_TYPE_DIRECTORY:
+        raise ValueError("Configured workspace root is not a directory.")
     target = root
-    for component in ([] if rel == "." else rel.split("/")):
+    rel_components = [] if rel == "." else rel.split("/")
+    for index, component in enumerate(rel_components):
         target = posixpath.join(target, component)
         attrs = await sftp.lstat(target)
         if attrs.type == asyncssh.FILEXFER_TYPE_SYMLINK:
             raise ValueError("Symlink paths are not allowed.")
-        if component != (rel.split("/")[-1] if rel != "." else "") and attrs.type != asyncssh.FILEXFER_TYPE_DIRECTORY:
+        if index < len(rel_components) - 1 and attrs.type != asyncssh.FILEXFER_TYPE_DIRECTORY:
             raise ValueError("Path component is not a directory.")
     if not inside(target):
         raise ValueError("Path escapes configured workspace.")
