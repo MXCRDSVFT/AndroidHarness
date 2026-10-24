@@ -9,7 +9,7 @@ from pathlib import PurePosixPath
 import asyncssh
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("AndroidHarness Workspace (read-only)", stateless_http=True)
+mcp = FastMCP("AndroidHarness Workspace Bridge", stateless_http=True)
 HOST = os.environ.get("ANDROIDHARNESS_SSH_HOST", "").strip()
 USER = os.environ.get("ANDROIDHARNESS_SSH_USER", "").strip()
 KEY = os.environ.get("ANDROIDHARNESS_SSH_KEY", "").strip()
@@ -215,7 +215,7 @@ async def git_diff() -> dict:
     )
     try:
         result = await conn.run(
-            "git -C " + __import__("shlex").quote(posixpath.normpath(ROOT)) +
+            "git -C " + shlex.quote(posixpath.normpath(ROOT)) +
             " diff --no-ext-diff --",
             check=False, timeout=20,
         )
@@ -231,3 +231,4 @@ async def git_diff() -> dict:
 
 if __name__ == "__main__":
     mcp.run(transport="streamable-http", host="127.0.0.1", port=8000, path="/mcp")
+
