@@ -5,7 +5,7 @@ A constrained read-only adapter that exposes an SSH-accessible AndroidHarness wo
 ## Security
 
 - SSH key authentication with pinned known-hosts verification.
-- SFTP-only; no shell command execution, Git mutation, process control, or device input.
+- SSH key authentication with pinned known-hosts verification. The only command execution is fixed, read-only `git status` and `git diff`; no arbitrary shell, Git mutation, process control, or device input.
 - Workspace-relative paths only; traversal and symlink entries are rejected.
 - Reads are bounded by ANDROIDHARNESS_MAX_READ_BYTES.
 - Keep the MCP listener private until deployed behind HTTPS and an approved authentication gateway. Never expose it unauthenticated.
@@ -24,5 +24,8 @@ Requires Python 3.11+.
 
 - `workspace_list`: list a directory beneath the configured root.
 - `workspace_read_file`: read bounded UTF-8 text beneath the configured root.
+- `workspace_write_file`: write bounded UTF-8 text inside the workspace using a temporary file and rename; symlink targets are rejected.
+- `git_status`: read-only status for the configured workspace.
+- `git_diff`: bounded, read-only diff for tracked changes.
 
 This is a read-only adapter slice, not a direct integration with AndroidHarness's internal callable-tool registry. Unit tests cover path validation and workspace boundaries; run them in the target environment before deployment. Live SSH/SFTP, deployment, and end-to-end ChatGPT connection checks require a configured SSH workspace and a reachable authenticated HTTPS endpoint. The adapter is not active in a ChatGPT conversation until that endpoint is deployed and registered in an eligible ChatGPT account/workspace.
