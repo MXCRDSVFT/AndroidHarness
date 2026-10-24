@@ -57,5 +57,22 @@ class SafeTargetTests(unittest.IsolatedAsyncioTestCase):
                 await server.safe_target(sftp, ".")
 
 
+class WriteToolValidationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_write_rejects_workspace_root(self):
+        with patch.object(server, "open_sftp", new_callable=AsyncMock) as open_sftp:
+            result = await server.workspace_write_file(".", "not a path")
+        self.assertFalse(result["ok"])
+        open_sftp.assert_not_awaited()
+
+    async def test_write_rejects_oversized_content_before_connecting(self):
+        with patch.object(server, "MAX_BYTES", 3), patch.object(
+            server, "open_sftp", new_callable=AsyncMock
+        ) as open_sftp:
+            result = await server.workspace_write_file("a.txt", "four")
+        self.assertFalse(result["ok"])
+        self.assertIn("write limit", result["error"])
+        open_sftp.assert_not_awaited()
+
+
 if __name__ == "__main__":
     unittest.main()
