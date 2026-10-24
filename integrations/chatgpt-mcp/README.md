@@ -17,7 +17,7 @@ Requires Python 3.11+.
 
 1. Create a virtual environment and install requirements: `python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt`.
 2. Set ANDROIDHARNESS_SSH_HOST, ANDROIDHARNESS_SSH_USER, ANDROIDHARNESS_SSH_KEY, ANDROIDHARNESS_KNOWN_HOSTS and ANDROIDHARNESS_WORKSPACE (absolute remote root). Optional: ANDROIDHARNESS_MAX_READ_BYTES (default 200000).
-3. Run `python server.py`. Local endpoint: `http://127.0.0.1:8000/mcp`.
+3. Run the local checks with `python -m unittest discover -s tests -v`. Then start the server with `python server.py`. Local endpoint: `http://127.0.0.1:8000/mcp`.
 4. Deploy behind TLS/authentication or a supported secure tunnel, then connect that HTTPS MCP endpoint from ChatGPT on the web.
 
 ## Tools
@@ -25,4 +25,4 @@ Requires Python 3.11+.
 - `workspace_list`: list a directory beneath the configured root.
 - `workspace_read_file`: read bounded UTF-8 text beneath the configured root.
 
-This is an initial read-only adapter slice. ChatGPT registration, endpoint deployment, and end-to-end SSH tests remain separate deployment steps.
+This is a read-only adapter slice, not a direct integration with AndroidHarness's internal callable-tool registry. Unit tests cover path validation and workspace boundaries; run them in the target environment before deployment. Live SSH/SFTP, deployment, and end-to-end ChatGPT connection checks require a configured SSH workspace and a reachable authenticated HTTPS endpoint. The adapter is not active in a ChatGPT conversation until that endpoint is deployed and registered in an eligible ChatGPT account/workspace.
