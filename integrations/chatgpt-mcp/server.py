@@ -50,18 +50,40 @@ def inside(path: str) -> bool:
     return candidate == root or candidate.startswith(root.rstrip("/") + "/")
 
 
+async def safe_target(sftp, rel: str) -> str:
+    """Reject symlinks in the configured root and every path component."""
+    root = posixpath.normpath(ROOT)
+    current = "/"
+    for component in [part for part in root.split("/") if part]:
+        current = posixpath.join(current, component)
+        attrs = await sftp.lstat(current)
+        if attrs.type == asyncssh.FILEXFER_TYPE_SYMLINK:
+            raise ValueError("Symlink component in configured workspace root.")
+        if current != root and attrs.type != asyncssh.FILEXFER_TYPE_DIRECTORY:
+            raise ValueError("Workspace root contains a non-directory component.")
+    target = root
+    for component in ([] if rel == "." else rel.split("/")):
+        target = posixpath.join(target, component)
+        attrs = await sftp.lstat(target)
+        if attrs.type == asyncssh.FILEXFER_TYPE_SYMLINK:
+            raise ValueError("Symlink paths are not allowed.")
+        if component != (rel.split("/")[-1] if rel != "." else "") and attrs.type != asyncssh.FILEXFER_TYPE_DIRECTORY:
+            raise ValueError("Path component is not a directory.")
+    if not inside(target):
+        raise ValueError("Path escapes configured workspace.")
+    return target
+
+
 @mcp.tool()
 async def workspace_list(path: str = ".") -> dict:
     """List entries beneath the configured workspace root. Symlinks are not traversable."""
     rel = relative(path)
-    target = posixpath.normpath(posixpath.join(ROOT, rel))
-    if not inside(target):
-        return {"ok": False, "error": "Path escapes configured workspace."}
     conn, sftp = await open_sftp()
     try:
+        target = await safe_target(sftp, rel)
         attrs = await sftp.lstat(target)
-        if attrs.type == asyncssh.FILEXFER_TYPE_SYMLINK:
-            return {"ok": False, "error": "Symlink paths are not allowed."}
+        if attrs.type != asyncssh.FILEXFER_TYPE_DIRECTORY:
+            return {"ok": False, "error": "Target is not a directory."}
         entries = []
         async for name, item in sftp.scandir(target):
             if item.type == asyncssh.FILEXFER_TYPE_SYMLINK:
@@ -87,14 +109,10 @@ async def workspace_list(path: str = ".") -> dict:
 async def workspace_read_file(path: str) -> dict:
     """Read a bounded UTF-8 text file beneath the configured workspace root."""
     rel = relative(path)
-    target = posixpath.normpath(posixpath.join(ROOT, rel))
-    if not inside(target):
-        return {"ok": False, "error": "Path escapes configured workspace."}
     conn, sftp = await open_sftp()
     try:
+        target = await safe_target(sftp, rel)
         attrs = await sftp.lstat(target)
-        if attrs.type == asyncssh.FILEXFER_TYPE_SYMLINK:
-            return {"ok": False, "error": "Symlink paths are not allowed."}
         if attrs.type != asyncssh.FILEXFER_TYPE_REGULAR:
             return {"ok": False, "error": "Only regular files can be read."}
         if attrs.size is not None and attrs.size > MAX_BYTES:
