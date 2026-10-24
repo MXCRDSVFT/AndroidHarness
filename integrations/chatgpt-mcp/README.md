@@ -1,11 +1,11 @@
 # AndroidHarness to ChatGPT MCP adapter
 
-A constrained read-only adapter that exposes an SSH-accessible AndroidHarness workspace to ChatGPT through Model Context Protocol (MCP). This is a bridge to a configured SSH/SFTP workspace, not a direct call into AndroidHarness's private in-app tool registry.
+A constrained MCP bridge that exposes a configured AndroidHarness workspace to ChatGPT over SSH/SFTP. It provides bounded file operations and fixed, read-only Git inspection.
 
 ## Security
 
 - SSH key authentication with pinned known-hosts verification.
-- SSH key authentication with pinned known-hosts verification. The only command execution is fixed, read-only `git status` and `git diff`; no arbitrary shell, Git mutation, process control, or device input.
+- The only command execution is fixed, read-only `git status` and `git diff`; no arbitrary shell, Git mutation, process control, or device input.
 - Workspace-relative paths only; traversal and symlink entries are rejected.
 - Reads are bounded by ANDROIDHARNESS_MAX_READ_BYTES.
 - Keep the MCP listener private until deployed behind HTTPS and an approved authentication gateway. Never expose it unauthenticated.
@@ -24,8 +24,8 @@ Requires Python 3.11+.
 
 - `workspace_list`: list a directory beneath the configured root.
 - `workspace_read_file`: read bounded UTF-8 text beneath the configured root.
-- `workspace_write_file`: write bounded UTF-8 text inside the workspace using a temporary file and rename; symlink targets are rejected.
+- `workspace_write_file`: write bounded UTF-8 text inside the workspace using a temporary file and atomic SFTP POSIX rename; symlink targets are rejected.
 - `git_status`: read-only status for the configured workspace.
 - `git_diff`: bounded, read-only diff for tracked changes.
 
-This is a read-only adapter slice, not a direct integration with AndroidHarness's internal callable-tool registry. Unit tests cover path validation and workspace boundaries; run them in the target environment before deployment. Live SSH/SFTP, deployment, and end-to-end ChatGPT connection checks require a configured SSH workspace and a reachable authenticated HTTPS endpoint. The adapter is not active in a ChatGPT conversation until that endpoint is deployed and registered in an eligible ChatGPT account/workspace.
+The adapter exposes a deliberately limited workspace tool subset over SSH; it does not invoke AndroidHarness's in-process Kotlin `ToolRegistry`. Unit tests cover path validation, workspace boundaries, symlink rejection, and write-input limits. Deploy only behind authenticated HTTPS or a supported secure tunnel, then register the MCP endpoint in an eligible ChatGPT account/workspace.
