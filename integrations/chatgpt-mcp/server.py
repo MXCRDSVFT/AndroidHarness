@@ -168,7 +168,7 @@ async def workspace_write_file(path: str, content: str) -> dict:
         try:
             async with sftp.open(temporary, "xb") as handle:
                 await handle.write(data)
-            await sftp.rename(temporary, target)
+            await sftp.posix_rename(temporary, target)
         finally:
             try:
                 await sftp.remove(temporary)
