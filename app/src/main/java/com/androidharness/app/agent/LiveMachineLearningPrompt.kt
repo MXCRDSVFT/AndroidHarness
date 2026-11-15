@@ -20,5 +20,5 @@ internal object LiveMachineLearningPrompt {
 - When an Android device is unreachable, report device execution as unverified. A source commit, pull request, text prompt or simulated response is not a device receipt.
 """.trimIndent()
 
-    fun attach(base: String): String = "$"+"base\n\n"+"$"+"instruction"
+    fun attach(base: String): String = base + "\n\n" + instruction
 }
