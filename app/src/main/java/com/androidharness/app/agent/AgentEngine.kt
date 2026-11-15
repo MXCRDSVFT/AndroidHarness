@@ -1154,7 +1154,8 @@ class AgentEngine(
         // reply style applies here too. Code, paths and quoted errors stay exact.
         val caveman = cavemanSettings()
         val system = com.androidharness.app.caveman.CavemanPolicy.apply(
-            "You are a read-only research subagent inside a coding harness. " +
+            LiveMachineLearningPrompt.attach(
+                "You are a read-only research subagent inside a coding harness. " +
                 "Explore the workspace with the tools you have (read_file, list_dir, " +
                 "search_files, grep, file_info, web_fetch/search, and CodeGraph when available) to answer the task. " +
                 "You must not modify anything, and you cannot ask questions; if something " +
@@ -1162,7 +1163,8 @@ class AgentEngine(
                 "When reporting file properties like newlines or byte counts, inspect with file_info rather than inferring from line counts. " +
                 "Finish with a complete, self-contained answer: your final message is the " +
                 "ONLY thing returned to the caller, so include file paths, line references " +
-                "and concrete details, and no meta-commentary.",
+                "and concrete details, and no meta-commentary."
+            ),
             installed = caveman.cavemanInstalled,
             intensity = caveman.cavemanIntensity,
             wenyan = caveman.cavemanWenyan,
