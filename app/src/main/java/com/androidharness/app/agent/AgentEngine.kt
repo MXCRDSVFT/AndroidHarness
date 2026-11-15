@@ -239,7 +239,7 @@ class AgentEngine(
         // Rebuilt when Full access toggles, because the path rules the model
         // is told about change with it.
         var replySettings = cavemanSettings()
-        var systemPrompt = systemPrompt(workspace, mode, fullAccess = false, repoMapEnabled = repoMapEnabled) + if (pinnedInstructions.isBlank()) "" else "\n\nPinned user instructions:\n$pinnedInstructions"
+        var systemPrompt = LiveMachineLearningPrompt.attach(systemPrompt(workspace, mode, fullAccess = false, repoMapEnabled = repoMapEnabled)) + if (pinnedInstructions.isBlank()) "" else "\n\nPinned user instructions:\n$pinnedInstructions"
         var promptSandboxOff = false
         val runRegistry = registry.withExtra(extraTools)
         val tools = runRegistry.schemas(
@@ -300,7 +300,7 @@ class AgentEngine(
             if (sandboxOff != promptSandboxOff || replySettings != nextReplySettings) {
                 replySettings = nextReplySettings
                 promptSandboxOff = sandboxOff
-                systemPrompt = systemPrompt(workspace, mode, fullAccess = sandboxOff, repoMapEnabled = repoMapEnabled) + if (pinnedInstructions.isBlank()) "" else "\n\nPinned user instructions:\n$pinnedInstructions"
+                systemPrompt = LiveMachineLearningPrompt.attach(systemPrompt(workspace, mode, fullAccess = sandboxOff, repoMapEnabled = repoMapEnabled)) + if (pinnedInstructions.isBlank()) "" else "\n\nPinned user instructions:\n$pinnedInstructions"
             }
             // Open path resolution only exists on real-filesystem workspaces;
             // SAF has no shell root and stays inside its picked tree.
@@ -1154,7 +1154,8 @@ class AgentEngine(
         // reply style applies here too. Code, paths and quoted errors stay exact.
         val caveman = cavemanSettings()
         val system = com.androidharness.app.caveman.CavemanPolicy.apply(
-            "You are a read-only research subagent inside a coding harness. " +
+            LiveMachineLearningPrompt.attach(
+                "You are a read-only research subagent inside a coding harness. " +
                 "Explore the workspace with the tools you have (read_file, list_dir, " +
                 "search_files, grep, file_info, web_fetch/search, and CodeGraph when available) to answer the task. " +
                 "You must not modify anything, and you cannot ask questions; if something " +
@@ -1162,7 +1163,8 @@ class AgentEngine(
                 "When reporting file properties like newlines or byte counts, inspect with file_info rather than inferring from line counts. " +
                 "Finish with a complete, self-contained answer: your final message is the " +
                 "ONLY thing returned to the caller, so include file paths, line references " +
-                "and concrete details, and no meta-commentary.",
+                "and concrete details, and no meta-commentary."
+            ),
             installed = caveman.cavemanInstalled,
             intensity = caveman.cavemanIntensity,
             wenyan = caveman.cavemanWenyan,
@@ -1461,7 +1463,7 @@ class AgentEngine(
         return estimateContext(
             history,
             com.androidharness.app.caveman.CavemanPolicy.apply(
-                systemPrompt(workspace, mode, fullAccess, repoMapEnabled),
+                LiveMachineLearningPrompt.attach(systemPrompt(workspace, mode, fullAccess, repoMapEnabled)),
                 installed = caveman.cavemanInstalled,
                 intensity = caveman.cavemanIntensity,
                 wenyan = caveman.cavemanWenyan,
