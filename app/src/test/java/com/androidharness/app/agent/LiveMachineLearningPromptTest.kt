@@ -9,7 +9,7 @@ class LiveMachineLearningPromptTest {
         val combined = LiveMachineLearningPrompt.attach("Base system rules")
         assertTrue(combined.startsWith("Base system rules\n\n"))
         assertTrue(combined.contains("Live Machine Learning / Verified Adaptation"))
-        assertTrue(combined.contains("Do not claim persistence without a successful write receipt"))
+        assertTrue(combined.contains("do not claim persistence without a successful write receipt"))
     }
 
     @Test fun remainsDeterministicAcrossChats() {
