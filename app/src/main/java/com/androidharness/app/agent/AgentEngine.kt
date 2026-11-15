@@ -239,7 +239,7 @@ class AgentEngine(
         // Rebuilt when Full access toggles, because the path rules the model
         // is told about change with it.
         var replySettings = cavemanSettings()
-        var systemPrompt = systemPrompt(workspace, mode, fullAccess = false, repoMapEnabled = repoMapEnabled) + if (pinnedInstructions.isBlank()) "" else "\n\nPinned user instructions:\n$pinnedInstructions"
+        var systemPrompt = LiveMachineLearningPrompt.attach(systemPrompt(workspace, mode, fullAccess = false, repoMapEnabled = repoMapEnabled)) + if (pinnedInstructions.isBlank()) "" else "\n\nPinned user instructions:\n$pinnedInstructions"
         var promptSandboxOff = false
         val runRegistry = registry.withExtra(extraTools)
         val tools = runRegistry.schemas(
@@ -300,7 +300,7 @@ class AgentEngine(
             if (sandboxOff != promptSandboxOff || replySettings != nextReplySettings) {
                 replySettings = nextReplySettings
                 promptSandboxOff = sandboxOff
-                systemPrompt = systemPrompt(workspace, mode, fullAccess = sandboxOff, repoMapEnabled = repoMapEnabled) + if (pinnedInstructions.isBlank()) "" else "\n\nPinned user instructions:\n$pinnedInstructions"
+                systemPrompt = LiveMachineLearningPrompt.attach(systemPrompt(workspace, mode, fullAccess = sandboxOff, repoMapEnabled = repoMapEnabled)) + if (pinnedInstructions.isBlank()) "" else "\n\nPinned user instructions:\n$pinnedInstructions"
             }
             // Open path resolution only exists on real-filesystem workspaces;
             // SAF has no shell root and stays inside its picked tree.
@@ -1461,7 +1461,7 @@ class AgentEngine(
         return estimateContext(
             history,
             com.androidharness.app.caveman.CavemanPolicy.apply(
-                systemPrompt(workspace, mode, fullAccess, repoMapEnabled),
+                LiveMachineLearningPrompt.attach(systemPrompt(workspace, mode, fullAccess, repoMapEnabled)),
                 installed = caveman.cavemanInstalled,
                 intensity = caveman.cavemanIntensity,
                 wenyan = caveman.cavemanWenyan,
