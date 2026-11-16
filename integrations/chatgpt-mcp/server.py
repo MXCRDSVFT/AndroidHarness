@@ -299,7 +299,7 @@ async def cin_bridge_http(method: str, route: str, payload: dict | None = None) 
             raise ValueError("Malformed CIN bridge HTTP response")
         header_lines = header.decode("ascii").split("\r\n")
         status_parts = header_lines[0].split(" ")
-        if len(status_parts) < 2 or status_parts[0] != "HTTP/1.1":
+        if len(status_parts) < 2 or status_parts[0] not in ("HTTP/1.0", "HTTP/1.1"):
             raise ValueError("Invalid CIN bridge HTTP status")
         status = int(status_parts[1])
         headers = {}
