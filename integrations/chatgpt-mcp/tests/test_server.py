@@ -119,9 +119,10 @@ class CINRuntimeExchangeTests(unittest.IsolatedAsyncioTestCase):
         }
         with patch.object(server, "cin_bridge_http", new=AsyncMock(return_value=(200, response))):
             outcome = await server.cin_runtime_exchange(content, "cin-check")
-        self.assertTrue(outcome["ok"])
+        self.assertFalse(outcome["ok"])
         self.assertFalse(outcome["runtime_execution_verified"])
-        self.assertIsNone(outcome["execution_owner"])
+        self.assertNotIn("response", outcome)
+        self.assertEqual(outcome["verification_state"], "unverified")
 
     async def test_rejects_wrong_turn_hash(self):
         response = {
