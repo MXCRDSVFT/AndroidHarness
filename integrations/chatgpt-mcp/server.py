@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import json
 import os
 import posixpath
+import re
 import secrets
 import shlex
 from pathlib import PurePosixPath
@@ -227,6 +231,174 @@ async def git_diff() -> dict:
     finally:
         conn.close()
         await conn.wait_closed()
+
+
+
+# The canonical CIN-Core engine remains on the authorized Termux node.
+# These tools only transport requests through the existing pinned SSH link
+# to the localhost-only Monolith One bridge; they never execute SSH commands.
+CIN_BRIDGE_PORT = os.environ.get("ANDROIDHARNESS_CIN_BRIDGE_PORT", "6974")
+CIN_MAX_RESPONSE_BYTES = 512_000
+
+
+def cin_bridge_port() -> int:
+    try:
+        port = int(CIN_BRIDGE_PORT)
+    except ValueError as exc:
+        raise ValueError("Invalid CIN bridge port") from exc
+    if not 1024 <= port <= 65535:
+        raise ValueError("CIN bridge port must be 1024..65535")
+    return port
+
+
+async def cin_bridge_http(method: str, route: str, payload: dict | None = None) -> tuple[int, dict]:
+    """HTTP/1.1 over the authenticated SSH connection to the *remote* loopback.
+
+    No public bridge listener, arbitrary SSH command, shell, or remote file
+    mutation is introduced. The existing bridge's S99/4A checks still apply.
+    """
+    configured()
+    if (method, route) not in (("GET", "/status"), ("POST", "/exchange")):
+        raise ValueError("Unsupported CIN bridge operation")
+    body = b"" if payload is None else json.dumps(
+        payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    ).encode("utf-8")
+    if len(body) > MAX_BYTES:
+        raise ValueError("CIN request exceeds configured size limit")
+    request = (
+        f"{method} {route} HTTP/1.1\r\n"
+        "Host: 127.0.0.1\r\n"
+        "Accept: application/json\r\n"
+        "Content-Type: application/json\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "Connection: close\r\n\r\n"
+    ).encode("ascii") + body
+    conn = await asyncssh.connect(
+        HOST, username=USER, client_keys=[KEY], known_hosts=KNOWN_HOSTS,
+        agent_path=None, password=None, connect_timeout=10,
+    )
+    writer = None
+    try:
+        reader, writer = await conn.open_connection(
+            "127.0.0.1", cin_bridge_port(), encoding=None
+        )
+        writer.write(request)
+        await writer.drain()
+        response = bytearray()
+        # The canonical Python bridge returns Content-Length and closes.
+        # Limit bytes even if a faulty or malicious peer streams forever.
+        while True:
+            chunk = await asyncio.wait_for(reader.read(8192), timeout=100)
+            if not chunk:
+                break
+            response.extend(chunk)
+            if len(response) > CIN_MAX_RESPONSE_BYTES + 8192:
+                raise ValueError("CIN bridge response exceeds size limit")
+        header, delimiter, response_body = bytes(response).partition(b"\r\n\r\n")
+        if not delimiter or len(header) > 8192:
+            raise ValueError("Malformed CIN bridge HTTP response")
+        header_lines = header.decode("ascii").split("\r\n")
+        status_parts = header_lines[0].split(" ")
+        if len(status_parts) < 2 or status_parts[0] != "HTTP/1.1":
+            raise ValueError("Invalid CIN bridge HTTP status")
+        status = int(status_parts[1])
+        headers = {}
+        for line in header_lines[1:]:
+            if ":" not in line:
+                raise ValueError("Malformed CIN bridge response header")
+            name, value = line.split(":", 1)
+            headers[name.strip().lower()] = value.strip().lower()
+        if "transfer-encoding" in headers:
+            raise ValueError("Unexpected CIN bridge transfer encoding")
+        if "content-length" not in headers:
+            raise ValueError("CIN bridge omitted response length")
+        expected = int(headers["content-length"])
+        if expected < 0 or expected > CIN_MAX_RESPONSE_BYTES or len(response_body) != expected:
+            raise ValueError("CIN bridge response length mismatch")
+        data = json.loads(response_body.decode("utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected CIN bridge JSON response")
+        return status, data
+    finally:
+        if writer is not None:
+            writer.close()
+        conn.close()
+        await conn.wait_closed()
+
+
+@mcp.tool()
+async def cin_runtime_status() -> dict:
+    """Check the actual CIN-Core Monolith One localhost bridge via pinned SSH."""
+    try:
+        status, result = await cin_bridge_http("GET", "/status")
+        return {
+            "ok": status == 200, "http_status": status,
+            "bridge": result.get("bridge"), "engine": result.get("engine"),
+            "runtime_bridge_verified": result.get("runtime_bridge_verified") is True,
+            "runtime_bridge_verification_source": result.get("runtime_bridge_verification_source"),
+            "note": "Bridge reachability is not proof of execution for a conversation turn.",
+        }
+    except (OSError, ValueError, RuntimeError, asyncssh.Error, asyncio.TimeoutError) as exc:
+        return {"ok": False, "runtime_bridge_verified": False,
+                "error": f"{type(exc).__name__}: {str(exc)[:500]}"}
+
+
+@mcp.tool()
+async def cin_runtime_exchange(content: str, conversation_id: str = "chatgpt-mcp") -> dict:
+    """Submit a turn to local Omega83 and return its correlated response or timeout.
+
+    No advisory text is marked as device-executed without the canonical
+    bridge's explicit, cryptographically checked runtime attestation.
+    """
+    if not isinstance(content, str) or not content.strip():
+        return {"ok": False, "error": "content must be nonempty text"}
+    if len(content.encode("utf-8")) > min(MAX_BYTES - 2000, 100_000):
+        return {"ok": False, "error": "CIN turn exceeds the configured size limit"}
+    if not isinstance(conversation_id, str) or not re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", conversation_id):
+        return {"ok": False, "error": "invalid conversation_id"}
+    payload = {
+        "content": content, "conversation_id": conversation_id,
+        "direction": "app_to_cin", "source": "AndroidHarness ChatGPT MCP",
+        "target": "CIN-Core Omega 8.3", "voice_output": "none",
+    }
+    try:
+        status, result = await cin_bridge_http("POST", "/exchange", payload)
+        turn = result.get("request_turn_id")
+        request_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+        if status != 200:
+            return {
+                "ok": False, "http_status": status,
+                "queued": result.get("queued") is True,
+                "request_turn_id": turn, "error": result.get("error") or result.get("detail")
+                or result.get("status") or "CIN bridge request failed",
+                "runtime_execution_verified": False,
+            }
+        runtime_payload = result.get("runtime_payload")
+        if not isinstance(runtime_payload, dict) or not isinstance(turn, str) or not re.fullmatch(r"[0-9a-f]{32}", turn):
+            raise ValueError("Missing correlated CIN runtime payload")
+        if (result.get("conversation_id") != conversation_id or
+                result.get("request_content_hash") != request_hash or
+                runtime_payload.get("request_turn_id") != turn or
+                runtime_payload.get("request_content_hash") != request_hash):
+            raise ValueError("CIN response did not match the submitted turn")
+        answer = result.get("response")
+        if not isinstance(answer, str):
+            raise ValueError("CIN returned an invalid response")
+        # Only the locally verified attestation is authoritative. Raw flags
+        # inside the runtime response are not self-authenticating.
+        verified = result.get("runtime_attestation_verified") is True
+        return {
+            "ok": True, "response": answer,
+            "conversation_id": conversation_id, "request_turn_id": turn,
+            "request_content_hash": request_hash,
+            "runtime_execution_verified": verified,
+            "action_execution_verified": verified and result.get("action_execution_verified") is True,
+            "execution_owner": "OMEGA83" if verified else None,
+            "verification_state": "device_attested" if verified else "unverified",
+        }
+    except (OSError, ValueError, RuntimeError, asyncssh.Error, asyncio.TimeoutError) as exc:
+        return {"ok": False, "runtime_execution_verified": False,
+                "error": f"{type(exc).__name__}: {str(exc)[:500]}"}
 
 
 if __name__ == "__main__":
