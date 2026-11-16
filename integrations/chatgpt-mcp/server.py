@@ -387,6 +387,14 @@ async def cin_runtime_exchange(content: str, conversation_id: str = "chatgpt-mcp
         # Only the locally verified attestation is authoritative. Raw flags
         # inside the runtime response are not self-authenticating.
         verified = result.get("runtime_attestation_verified") is True
+        if not verified:
+            return {
+                "ok": False, "verification_state": "unverified",
+                "runtime_execution_verified": False,
+                "action_execution_verified": False,
+                "request_turn_id": turn,
+                "error": "CIN response has no verified local Circuit 9 attestation",
+            }
         return {
             "ok": True, "response": answer,
             "conversation_id": conversation_id, "request_turn_id": turn,
