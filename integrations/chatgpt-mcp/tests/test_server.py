@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -72,6 +73,70 @@ class WriteToolValidationTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result["ok"])
         self.assertIn("write limit", result["error"])
         open_sftp.assert_not_awaited()
+
+
+
+class CINRuntimeExchangeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_canonical_bridge_http_10_response(self):
+        payload = json.dumps({"bridge": "cin_omega83_conversation_bridge"}).encode("utf-8")
+        raw = (
+            b"HTTP/1.0 200 OK\\r\\n"
+            b"Content-Type: application/json\\r\\n"
+            + f"Content-Length: {len(payload)}\\r\\n".encode("ascii")
+            + b"\\r\\n" + payload
+        )
+        reader = MagicMock()
+        reader.read = AsyncMock(side_effect=[raw, b""])
+        writer = MagicMock()
+        writer.drain = AsyncMock()
+        conn = MagicMock()
+        conn.open_connection = AsyncMock(return_value=(reader, writer))
+        conn.wait_closed = AsyncMock()
+        with patch.object(server, "configured"), patch.object(
+            server.asyncssh, "connect", new=AsyncMock(return_value=conn)
+        ):
+            code, body = await server.cin_bridge_http("GET", "/status")
+        self.assertEqual(code, 200)
+        self.assertEqual(body["bridge"], "cin_omega83_conversation_bridge")
+        self.assertEqual(conn.open_connection.await_args.args[0], "127.0.0.1")
+
+    async def test_runtime_flags_without_attestation_remain_unverified(self):
+        content = "local hello"
+        import hashlib
+        request_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+        response = {
+            "status": "ok",
+            "response": "Omega reply",
+            "conversation_id": "cin-check",
+            "request_content_hash": request_hash,
+            "request_turn_id": "a" * 32,
+            "runtime_execution_verified": True,
+            "runtime_payload": {
+                "request_turn_id": "a" * 32,
+                "request_content_hash": request_hash,
+                "runtime_execution_verified": True,
+            },
+        }
+        with patch.object(server, "cin_bridge_http", new=AsyncMock(return_value=(200, response))):
+            outcome = await server.cin_runtime_exchange(content, "cin-check")
+        self.assertTrue(outcome["ok"])
+        self.assertFalse(outcome["runtime_execution_verified"])
+        self.assertIsNone(outcome["execution_owner"])
+
+    async def test_rejects_wrong_turn_hash(self):
+        response = {
+            "response": "unrelated",
+            "conversation_id": "cin-check",
+            "request_content_hash": "different",
+            "request_turn_id": "a" * 32,
+            "runtime_payload": {
+                "request_turn_id": "a" * 32, "request_content_hash": "different",
+            },
+        }
+        with patch.object(server, "cin_bridge_http", new=AsyncMock(return_value=(200, response))):
+            outcome = await server.cin_runtime_exchange("local hello", "cin-check")
+        self.assertFalse(outcome["ok"])
+        self.assertFalse(outcome["runtime_execution_verified"])
 
 
 if __name__ == "__main__":
