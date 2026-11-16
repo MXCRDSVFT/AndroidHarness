@@ -80,10 +80,10 @@ class CINRuntimeExchangeTests(unittest.IsolatedAsyncioTestCase):
     async def test_canonical_bridge_http_10_response(self):
         payload = json.dumps({"bridge": "cin_omega83_conversation_bridge"}).encode("utf-8")
         raw = (
-            b"HTTP/1.0 200 OK\\r\\n"
-            b"Content-Type: application/json\\r\\n"
-            + f"Content-Length: {len(payload)}\\r\\n".encode("ascii")
-            + b"\\r\\n" + payload
+            b"HTTP/1.0 200 OK\r\n"
+            b"Content-Type: application/json\r\n"
+            + f"Content-Length: {len(payload)}\r\n".encode("ascii")
+            + b"\r\n" + payload
         )
         reader = MagicMock()
         reader.read = AsyncMock(side_effect=[raw, b""])
